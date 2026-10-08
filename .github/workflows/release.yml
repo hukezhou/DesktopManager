@@ -1,0 +1,74 @@
+name: Release
+
+# 打 tag（形如 v1.0.0）并推送时触发：编译 → 打包 → 建 GitHub Release
+on:
+  push:
+    tags:
+      - 'v*'
+
+# 需要写权限才能创建 Release
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    env:
+      PROJECT: src/DesktopManager/DesktopManager.csproj
+      EXE_NAME: DesktopManager
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # 完整历史，供 --generate-notes 生成变更列表
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Publish (self-contained, single file, win-x64)
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $ver = $tag.TrimStart("v")
+          Write-Host "tag=$tag  version=$ver"
+
+          dotnet publish $env:PROJECT -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:Version=$ver -p:AssemblyVersion=$ver -p:FileVersion=$ver -p:InformationalVersion=$ver -o publish
+
+          if (-not (Test-Path "publish/$env:EXE_NAME.exe")) {
+            Write-Error "找不到发布产物 publish/$env:EXE_NAME.exe"
+            exit 1
+          }
+
+          $zip = "$env:EXE_NAME-$tag-win-x64.zip"
+          Compress-Archive -Path "publish/$env:EXE_NAME.exe" -DestinationPath $zip -Force
+
+          # 校验和，方便用户确认下载没被篡改
+          $hash = (Get-FileHash "publish/$env:EXE_NAME.exe" -Algorithm SHA256).Hash.ToLower()
+          "$hash  $env:EXE_NAME.exe" | Out-File -Encoding ascii SHA256SUMS.txt
+
+          Get-ChildItem $zip, SHA256SUMS.txt | Select-Object Name, Length | Format-Table -AutoSize
+
+      - name: Upload build as workflow artifact (备份，Release 失败也能取到)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.EXE_NAME }}-${{ github.ref_name }}-win-x64
+          path: |
+            DesktopManager-*-win-x64.zip
+            SHA256SUMS.txt
+          if-no-files-found: error
+
+      - name: Create GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $zip = "$env:EXE_NAME-$tag-win-x64.zip"
+
+          gh release create $tag $zip SHA256SUMS.txt --title "Desktop Manager $tag" --generate-notes
+
+          Write-Host "Release 已创建：https://github.com/${{ github.repository }}/releases/tag/$tag"
