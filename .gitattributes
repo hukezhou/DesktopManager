@@ -1,0 +1,69 @@
+# ============================================================
+#  换行符与文件类型规则
+#  目的：消除 "LF will be replaced by CRLF" 警告，
+#        并保证换行符在任何机器、任何 git 配置下结果一致。
+#
+#  约定：仓库索引（index）里一律存 LF；
+#        检出到工作区时，Windows 源文件用 CRLF（与 Visual Studio 一致）。
+#        .gitattributes 的优先级高于 core.autocrlf，
+#        所以别人即使把 autocrlf 设成 false 也不会产生差异噪音。
+# ============================================================
+
+# ---- 默认规则：未在下面列出的文件，由 Git 自动判断文本/二进制 ----
+#      文本 → 索引存 LF，检出时按本机习惯
+* text=auto
+
+# ---- 文本，检出为 CRLF（本项目是 Windows 专属：WPF / net8.0-windows）----
+*.cs      text eol=crlf
+*.xaml    text eol=crlf
+*.csproj  text eol=crlf
+*.sln     text eol=crlf
+*.props   text eol=crlf
+*.targets text eol=crlf
+*.config  text eol=crlf
+*.json    text eol=crlf
+*.xlf     text eol=crlf
+*.resx    text eol=crlf
+*.settings text eol=crlf
+
+# ---- 文档 ----
+*.md      text eol=crlf
+*.txt     text eol=crlf
+
+# ---- 脚本：PowerShell / 批处理用 CRLF，POSIX shell 脚本必须是 LF ----
+*.ps1     text eol=crlf
+*.psm1    text eol=crlf
+*.psd1    text eol=crlf
+*.cmd     text eol=crlf
+*.bat     text eol=crlf
+*.sh      text eol=lf
+*.yml     text eol=lf
+*.yaml    text eol=lf
+
+# ---- 二进制：绝不转换换行符，也不参与 diff / 合并 ----
+*.ico     binary
+*.cur     binary
+*.png     binary
+*.jpg     binary
+*.jpeg    binary
+*.gif     binary
+*.bmp     binary
+*.tiff    binary
+*.webp    binary
+*.svg     text
+*.ttf     binary
+*.otf     binary
+*.woff    binary
+*.woff2   binary
+*.exe     binary
+*.dll     binary
+*.pdb     binary
+*.lib     binary
+*.zip     binary
+*.7z      binary
+*.nupkg   binary
+*.snk     binary
+*.pfx     binary
+
+# ---- diff 辅助：让 C# 文件按方法边界显示 diff 上下文 ----
+*.cs diff=csharp
