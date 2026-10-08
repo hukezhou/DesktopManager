@@ -1,0 +1,84 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:sys="clr-namespace:System;assembly=mscorlib">
+
+    <!-- 主题标识：ThemeService 通过该键定位需要替换的主题字典 -->
+    <sys:String x:Key="Theme.Name">Light</sys:String>
+
+    <FontFamily x:Key="Font.Default">Microsoft YaHei UI, Segoe UI</FontFamily>
+    <FontFamily x:Key="Font.Glyph">Segoe MDL2 Assets</FontFamily>
+
+    <!-- 窗口与标题栏 -->
+    <!-- 微信侧边栏 / 标题栏实时屏幕取色 #DCDCE1（与 wechat.png 的 #E1E1E6 差 5 级）：标题栏 / 侧边栏 / 自绘边框共用这一个值 -->
+    <Color x:Key="Color.Panel.Background">#FFDCDCE1</Color>
+    <SolidColorBrush x:Key="Brush.Window.Background" Color="{StaticResource Color.Panel.Background}" />
+    <!-- 边框与标题栏 / 侧边栏同色，只在贴着内容区的那一侧看得出 -->
+    <SolidColorBrush x:Key="Brush.Window.Border" Color="{StaticResource Color.Panel.Background}" />
+    <SolidColorBrush x:Key="Brush.TitleBar.Background" Color="{StaticResource Color.Panel.Background}" />
+    <SolidColorBrush x:Key="Brush.Caption.Hover" Color="#FFD7D7D7" />
+    <SolidColorBrush x:Key="Brush.Caption.Close.Hover" Color="#FFE81123" />
+    <SolidColorBrush x:Key="Brush.Caption.Close.HoverText" Color="#FFFFFFFF" />
+
+    <!-- 标题栏四个字形（图钉 / 最小化 / 最大化 / 关闭）统一用这个淡色，与正文颜色分开 -->
+    <SolidColorBrush x:Key="Brush.Caption.Glyph" Color="#FF5A5A5A" />
+
+    <!-- 置顶按钮：图钉线框未开启时用 Brush.Caption.Glyph，开启时变绿 -->
+    <SolidColorBrush x:Key="Brush.Pin.Active" Color="#FF07C160" />
+
+    <!-- 侧边栏：与标题栏同色；两个色块相对面板保持 Δ9 / Δ22 -->
+    <SolidColorBrush x:Key="Brush.Sidebar.Background" Color="{StaticResource Color.Panel.Background}" />
+    <SolidColorBrush x:Key="Brush.Sidebar.Button.Hover" Color="#FFD3D3D3" />
+    <SolidColorBrush x:Key="Brush.Sidebar.Button.Selected" Color="#FFC6C6C6" />
+    <!-- 长按拖拽时的交换目标底色：品牌绿加一层淡底，配合绿色描边 -->
+    <SolidColorBrush x:Key="Brush.Sidebar.Button.DropTarget" Color="#1F07C160" />
+    <SolidColorBrush x:Key="Brush.Sidebar.Glyph" Color="#FF4A4A4A" />
+
+    <!-- 内容区与搜索栏（内容底色与正常行同值，避免最后一行以下出现接缝） -->
+    <SolidColorBrush x:Key="Brush.Content.Background" Color="#FFEEEEF0" />
+    <SolidColorBrush x:Key="Brush.Search.Background" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="Brush.Search.Border" Color="#FFE2E2E2" />
+    <SolidColorBrush x:Key="Brush.Circle.Stroke" Color="#FF3B3B3B" />
+    <SolidColorBrush x:Key="Brush.Circle.Fill" Color="#00000000" />
+    <SolidColorBrush x:Key="Brush.Circle.Hover" Color="#FFDADADA" />
+
+    <!-- 行：置顶行底色比正常行深一档（取自微信实测 #E6E6E8 / #EEEEF0） -->
+    <SolidColorBrush x:Key="Brush.Row.Normal" Color="#FFEEEEF0" />
+    <SolidColorBrush x:Key="Brush.Row.Pinned" Color="#FFE6E6E8" />
+    <SolidColorBrush x:Key="Brush.Row.Hover" Color="#FFDCDCDC" />
+    <!-- 焦点行底色：微信选中行实测 #15AC70（与品牌绿 #07C160 不是一个值） -->
+    <SolidColorBrush x:Key="Brush.Row.Focused" Color="#FF15AC70" />
+    <!-- 行分隔线：微信实测是比色带更深的灰线 #DDDDDF（2px） -->
+    <SolidColorBrush x:Key="Brush.Row.Separator" Color="#FFDDDDDF" />
+    <SolidColorBrush x:Key="Brush.Separator" Color="#FFE3E3E3" />
+
+    <!-- 用户栏滚动条：只剩滑块，轨道透明 -->
+    <SolidColorBrush x:Key="Brush.Scroll.Thumb" Color="#FFCDCDCD" />
+    <SolidColorBrush x:Key="Brush.Scroll.Thumb.Hover" Color="#FFB8B8B8" />
+
+    <!-- 文本 -->
+    <SolidColorBrush x:Key="Brush.Text.Primary" Color="#FF191919" />
+    <!-- 列表行名称：比正文淡，参考微信列表标题 -->
+    <SolidColorBrush x:Key="Brush.Text.Item" Color="#FF4A4A4A" />
+    <SolidColorBrush x:Key="Brush.Text.Secondary" Color="#FF8C8C8C" />
+    <SolidColorBrush x:Key="Brush.Text.Placeholder" Color="#FF9C9C9C" />
+    <SolidColorBrush x:Key="Brush.Text.OnAccent" Color="#FFFFFFFF" />
+
+    <!-- 控件 -->
+    <SolidColorBrush x:Key="Brush.Accent" Color="#FF07C160" />
+    <SolidColorBrush x:Key="Brush.Control.Background" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="Brush.Control.Border" Color="#FFCCCCCC" />
+    <SolidColorBrush x:Key="Brush.Control.Disabled" Color="#FFB8B8B8" />
+    <SolidColorBrush x:Key="Brush.Button.Default.Background" Color="#FFF7F7F7" />
+    <SolidColorBrush x:Key="Brush.Button.Default.Hover" Color="#FFEEEEEE" />
+    <SolidColorBrush x:Key="Brush.Dialog.Background" Color="#FFFAFAFA" />
+    <SolidColorBrush x:Key="Brush.ToolTip.Background" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="Brush.ToolTip.Border" Color="#FFD8D8D8" />
+
+    <!-- 右键菜单危险项（从列表移除）：常态红字 / 高亮红底 -->
+    <SolidColorBrush x:Key="Brush.Menu.Danger" Color="#FFFA5152" />
+
+    <!-- 预设图标磁贴选中态：品牌绿加一层淡底，配合绿色边框 -->
+    <SolidColorBrush x:Key="Brush.Preset.Tile.Selected" Color="#1F07C160" />
+
+</ResourceDictionary>

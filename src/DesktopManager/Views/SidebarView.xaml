@@ -1,0 +1,118 @@
+<UserControl
+    x:Class="DesktopManager.Views.SidebarView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:v="clr-namespace:DesktopManager.Views"
+    Focusable="False">
+
+    <Grid Background="{DynamicResource Brush.Sidebar.Background}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- 上半区：Sheet 列表 + 添加按钮。
+             右边距 = 窗口自绘边框厚度（AppLayout.WindowBorderThickness）：侧边栏底色与边框同色，
+             视觉上的左边缘在窗口外沿，所以按钮要在 4+56=60 DIP 的可见色带里居中 -->
+        <StackPanel Grid.Row="0" VerticalAlignment="Top" Margin="0,10,4,0">
+            <!-- 长按某个 Sheet 项 700 ms 后进入拖拽态：“+” 变回收站，拖到它上方释放即移除、原地释放即编辑 -->
+            <ItemsControl
+                Focusable="False"
+                ItemsSource="{Binding Items}"
+                v:SidebarDragBehavior.Host="{Binding}"
+                v:SidebarDragBehavior.RecycleTarget="{Binding ElementName=AddButton}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Button
+                            Command="{Binding SelectCommand}"
+                            Style="{StaticResource SidebarButtonStyle}"
+                            ToolTip="{Binding Title}">
+                            <Grid>
+                                <Image
+                                    Width="26"
+                                    Height="26"
+                                    RenderOptions.BitmapScalingMode="HighQuality"
+                                    Source="{Binding Icon}"
+                                    Visibility="{Binding HasIcon, Converter={StaticResource BoolToVisibility}}" />
+                                <TextBlock
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    FontFamily="{DynamicResource Font.Glyph}"
+                                    FontSize="22"
+                                    Foreground="{DynamicResource Brush.Sidebar.Glyph}"
+                                    Text="{Binding Glyph}"
+                                    Visibility="{Binding HasIcon, Converter={StaticResource InverseBoolToVisibility}}" />
+                            </Grid>
+                        </Button>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <!-- “+”：选择 .ico/.png 并命名后新增一个侧边栏项；拖拽态下同一个位置换成回收站 -->
+            <Button x:Name="AddButton" Command="{Binding AddSheetCommand}">
+                <Button.Style>
+                    <!-- ToolTip 必须写在 Style 里，局部值会压过 Style.Trigger -->
+                    <Style TargetType="Button" BasedOn="{StaticResource SidebarButtonStyle}">
+                        <Setter Property="ToolTip" Value="添加侧边栏项" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsRecycleVisible}" Value="True">
+                                <Setter Property="ToolTip" Value="拖到这里释放即可移除该侧边栏项" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+                <Grid>
+                    <!-- 几何从「半描边」(0.8) 起画：Shape 的期望尺寸是 bounds.Right/Bottom + 半描边，
+                         把「几何起点到原点的距离」也算进了尺寸。起点取 0.8 时期望尺寸 = 19.6 = 墨迹实际范围，
+                         ContentPresenter 按它居中才正好落在按钮中心。
+                         起点取 0 会少算另一边半描边（实测偏 −0.75 DIP），从 7,7 起手则偏右下约 3 DIP（改前实测 +2.75 / +3.25） -->
+                    <Path
+                        Data="M 9.8,0.8 V 18.8 M 0.8,9.8 H 18.8"
+                        Stroke="{DynamicResource Brush.Sidebar.Glyph}"
+                        StrokeThickness="1.6"
+                        StrokeStartLineCap="Round"
+                        StrokeEndLineCap="Round"
+                        Visibility="{Binding IsRecycleVisible, Converter={StaticResource InverseBoolToVisibility}}" />
+                    <!-- 回收站：与 “+” 同样 1.6 描边圆头，墨迹 16×16（“+” 是 18×18），两者各自居中在按钮中心。
+                         描边默认值放在 Setter 里，Style.Trigger 才压得动（局部值优先级高于触发器） -->
+                    <Path
+                        Data="M 0.8,2.8 H 16.8 M 5.8,2.8 V 0.8 H 10.8 V 2.8 M 2.8,2.8 L 3.8,16.8 H 13.8 L 14.8,2.8 M 6.8,5.8 V 13.8 M 10.8,5.8 V 13.8"
+                        StrokeThickness="1.6"
+                        StrokeStartLineCap="Round"
+                        StrokeEndLineCap="Round"
+                        StrokeLineJoin="Round"
+                        Visibility="{Binding IsRecycleVisible, Converter={StaticResource BoolToVisibility}}">
+                        <Path.Style>
+                            <Style TargetType="Path">
+                                <Setter Property="Stroke" Value="{DynamicResource Brush.Sidebar.Glyph}" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsRecycleHot}" Value="True">
+                                        <Setter Property="Stroke" Value="{DynamicResource Brush.Menu.Danger}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Path.Style>
+                    </Path>
+                </Grid>
+            </Button>
+        </StackPanel>
+
+        <!-- 底部：设置入口（右边距同上，保证在可见色带里居中） -->
+        <Button
+            Grid.Row="1"
+            Margin="0,0,4,12"
+            VerticalAlignment="Bottom"
+            DataContext="{Binding SettingsItem}"
+            Command="{Binding SelectCommand}"
+            Style="{StaticResource SidebarButtonStyle}"
+            ToolTip="{Binding Title}">
+            <TextBlock
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                FontFamily="{DynamicResource Font.Glyph}"
+                FontSize="22"
+                Foreground="{DynamicResource Brush.Sidebar.Glyph}"
+                Text="{Binding Glyph}" />
+        </Button>
+    </Grid>
+</UserControl>

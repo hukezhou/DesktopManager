@@ -1,0 +1,33 @@
+# ---- .NET 编译产物（dotnet build 会重新生成，绝不进版本库）----
+bin/
+obj/
+
+# ---- Visual Studio / Rider / VS Code 的个人配置 ----
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userprefs
+*.DotSettings.user
+
+# ---- NuGet 包与还原缓存 ----
+*.nupkg
+*.snupkg
+packages/
+!packages/build/
+
+# ---- 测试与构建临时物 ----
+[Tt]est[Rr]esult*/
+*.coverage
+*.coveragexml
+BenchmarkDotNet.Artifacts/
+
+# ---- 日志与本地临时数据 ----
+*.log
+*.tmp
+
+# ---- 操作系统杂项 ----
+Thumbs.db
+Desktop.ini
+.DS_Store

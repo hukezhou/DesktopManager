@@ -1,0 +1,68 @@
+<UserControl
+    x:Class="DesktopManager.Views.SheetView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:v="clr-namespace:DesktopManager.Views">
+
+    <!-- 搜索栏 + 用户栏是一个整体，四角统一倒角（半径见 AppLayout.ContentCornerRadius）。
+         用 Clip 而不是 Border.CornerRadius：后者只画自己的圆角底色，行底色 / 分隔线 / 滚动条不会被裁 -->
+    <Grid
+        Background="{DynamicResource Brush.Content.Background}"
+        v:RoundClipBehavior.Radius="{x:Static v:AppLayout.ContentCornerRadius}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- 置顶的搜索栏 + 添加按钮。底色跟随用户栏第一行，置顶时深色带从顶部开始 -->
+        <Border Grid.Row="0">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="Background" Value="{DynamicResource Brush.Row.Normal}" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsTopRowPinned}" Value="True">
+                            <Setter Property="Background" Value="{DynamicResource Brush.Row.Pinned}" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+
+            <Grid Margin="16,12,16,10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBox
+                    Style="{StaticResource SearchBoxStyle}"
+                    Tag="搜索"
+                    Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" />
+
+                <Button
+                    Grid.Column="1"
+                    Margin="12,0,0,0"
+                    Command="{Binding AddItemCommand}"
+                    IsEnabled="{Binding CanAddItems}"
+                    Style="{StaticResource CirclePlusButtonStyle}"
+                    ToolTip="添加文件、文件夹或快捷方式" />
+            </Grid>
+        </Border>
+
+        <!-- 用户栏：每行显示图标与名称 -->
+        <ListBox
+            x:Name="RowList"
+            Grid.Row="1"
+            ItemsSource="{Binding View}"
+            Style="{StaticResource RowListBoxStyle}" />
+
+        <TextBlock
+            Grid.Row="1"
+            Margin="0,48,0,0"
+            HorizontalAlignment="Center"
+            IsHitTestVisible="False"
+            FontSize="13"
+            Foreground="{DynamicResource Brush.Text.Secondary}"
+            Text="{Binding EmptyHint}"
+            Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVisibility}}" />
+    </Grid>
+</UserControl>

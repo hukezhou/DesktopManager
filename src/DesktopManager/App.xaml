@@ -1,0 +1,30 @@
+﻿<Application
+    x:Class="DesktopManager.App"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="clr-namespace:DesktopManager.ViewModels"
+    xmlns:views="clr-namespace:DesktopManager.Views"
+    ShutdownMode="OnMainWindowClose">
+
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- 第一个字典是主题字典，ThemeService 会整体替换它 -->
+                <ResourceDictionary Source="pack://application:,,,/DesktopManager;component/Themes/Light.xaml" />
+                <ResourceDictionary Source="pack://application:,,,/DesktopManager;component/Themes/Controls.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <!-- ViewModel 与 View 的隐式映射：内容区只绑定 ViewModel -->
+            <DataTemplate DataType="{x:Type vm:SidebarViewModel}">
+                <views:SidebarView />
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type vm:SheetViewModel}">
+                <views:SheetView />
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type vm:SettingsViewModel}">
+                <views:SettingsView />
+            </DataTemplate>
+        </ResourceDictionary>
+    </Application.Resources>
+
+</Application>
