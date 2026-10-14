@@ -13,8 +13,8 @@ namespace DesktopManager.ViewModels;
 
 /// <summary>
 /// 一个 Sheet 的用户栏：搜索、排序（置顶在前 → 置顶时间降序 → 打开次数降序 → SortOrder）、
-/// 添加/修改/置顶/移除/打开。内置「常用」Sheet 另有一套规则：不按打开次数排名，
-/// 由 <see cref="PromoteOpened"/> 把打开过的记录插到最前，并按条数上限从末尾裁剪。
+/// 添加/修改/置顶/移除/打开。内置「常用」Sheet 另有一套规则：少「打开次数」那一档，
+/// 由 <see cref="PromoteOpened"/> 把打开过的记录插到置顶区之下、非置顶区最前，并按条数上限从末尾裁剪。
 /// </summary>
 public sealed partial class SheetViewModel : ObservableObject
 {
@@ -78,9 +78,10 @@ public sealed partial class SheetViewModel : ObservableObject
         };
         if (IsFrequent)
         {
-            // 「常用」是按「最近打开」维护的，打开次数排名会把刚插到最前的记录挤下去，
-            // 所以这一页只用 SortOrder（越小越靠前）。CustomSort 而不是 SortDescriptions：
-            // 同一个比较器还要给条数上限裁剪取「末尾那条」，两处必须完全同序。
+            // 「常用」这一页里新记录要落在「置顶区之后、非置顶区最前」，所以只有「打开次数」
+            // 这一档要去掉 —— 留着会把刚插入的记录挤回后面。其余与普通页相同。
+            // 用 CustomSort 而不是 SortDescriptions：同一个比较器还要给条数上限裁剪取
+            // 「末尾那条」，两处必须完全同序。
             view.CustomSort = FrequentOrderComparer.Instance;
         }
         else
@@ -110,14 +111,7 @@ public sealed partial class SheetViewModel : ObservableObject
         // 让它们排在有时间的置顶项之后，而不是混在一起随机排
         foreach (var item in Model.Items)
         {
-            if (IsFrequent)
-            {
-                // 「常用」按最近打开排，置顶在这一页没有意义（菜单里也没入口）。老数据里可能留着置顶项：
-                // 它的色带会误导，还会让 NextSortOrder 漏掉它、算出比它大的值，插到最前就失效了
-                item.IsPinned = false;
-                item.PinnedAt = null;
-            }
-            else if (item.IsPinned && item.PinnedAt is null)
+            if (item.IsPinned && item.PinnedAt is null)
             {
                 item.PinnedAt = DateTime.MinValue;
             }
@@ -430,12 +424,6 @@ public sealed partial class SheetViewModel : ObservableObject
 
     public void TogglePin(LinkItemViewModel item)
     {
-        // 「常用」按最近打开排序，置顶会把刚插到最前的记录压下去，所以这一页根本没有置顶入口
-        if (IsFrequent)
-        {
-            return;
-        }
-
         item.IsPinned = !item.IsPinned;
         item.PinnedAt = item.IsPinned ? DateTime.Now : null;
         AttachOverride(item.Model);
@@ -521,8 +509,8 @@ public sealed partial class SheetViewModel : ObservableObject
     }
 
     /// <summary>
-    /// 新记录的 SortOrder 取当前最小值减一：在打开次数相同（都是 0）的非置顶行里它排最前。
-    /// 内置「常用」Sheet 也靠它把记录挪到最前（那一页只按 SortOrder 排）。
+    /// 新记录的 SortOrder 取「当前非置顶行的最小值减一」：在打开次数相同（都是 0）的非置顶行里它排最前。
+    /// 内置「常用」Sheet 也靠它把记录插到置顶区之下、非置顶区最前 —— 只看非置顶行正是这里要的语义。
     /// </summary>
     private int NextSortOrder()
     {
@@ -532,8 +520,9 @@ public sealed partial class SheetViewModel : ObservableObject
 
     /// <summary>
     /// 把一条「刚被打开过」的记录收进内置「常用」Sheet：同路径（忽略大小写）已经有记录就把
-    /// 那一条移到最前，否则复制一条新的插到最前。副本继承来源当时的显示名、打开次数与自定义图标
-    /// 副本；来源之后换图标或改名都不会跟着变。上限裁剪见 <see cref="EnforceFrequentCap"/>。
+    /// 那一条挪到非置顶区最前，否则复制一条新的插到那里（置顶行仍然压在上面）。副本继承来源
+    /// 当时的显示名、打开次数与自定义图标副本；来源之后换图标或改名都不会跟着变。
+    /// 上限裁剪见 <see cref="EnforceFrequentCap"/>。
     /// </summary>
     public void PromoteOpened(LinkItem source)
     {
@@ -566,7 +555,7 @@ public sealed partial class SheetViewModel : ObservableObject
         }
         else
         {
-            // 已经在「常用」里：只把它挪到最前，不新建重复记录
+            // 已经在「常用」里：只把它挪到非置顶区最前，不新建重复记录
             existing.SortOrder = NextSortOrder();
         }
 
@@ -576,7 +565,8 @@ public sealed partial class SheetViewModel : ObservableObject
     }
 
     /// <summary>
-    /// 「常用」条数上限：超出就删掉显示顺序里最后一条，也就是最久没被打开的那条。
+    /// 「常用」条数上限：超出就删掉显示顺序里最后一条 —— 置顶行排在前面，所以先被删的总是
+    /// 非置顶区里最久没被打开的那条；整页都置顶时才轮到最久没被置顶的（上限是硬上限）。
     /// 不能用 <c>Items[Count-1]</c> —— Items 是插入顺序，显示顺序由
     /// <see cref="FrequentOrderComparer"/> 决定。删除复用 <see cref="RemoveItem"/>，
     /// 因此只删记录与它独占的图标副本，<b>不碰磁盘上的文件</b>。
@@ -612,10 +602,12 @@ public sealed partial class SheetViewModel : ObservableObject
     public override string ToString() => Title;
 
     /// <summary>
-    /// 内置「常用」Sheet 的显示顺序：SortOrder 升序，相同则按名称。
-    /// 这一页没有置顶（见 <see cref="TogglePin"/>），也不按打开次数排名 —— 否则刚插到最前的
-    /// 记录会被打开次数更多的行挤下去。
-    /// 排序视图与条数裁剪共用同一个实例，两处对「最后一条」的理解才不会不一致。
+    /// 内置「常用」Sheet 的显示顺序：置顶行在前 → 置顶时间降序 → SortOrder 升序 → 名称升序。
+    /// 与普通页那条链只差「打开次数」一档：留着它，刚插到非置顶区最前的记录会被打开次数更多
+    /// 的行挤回去，「插在置顶记录下面」就失效了。
+    /// 用 <see cref="ListCollectionView.CustomSort"/> 而不是 SortDescriptions，是因为条数上限
+    /// 裁剪也要按同一顺序取「最后一条」，两处必须完全同序；代价是 null 要自己兜底
+    /// （SortDescriptions 会把 null 视为彼此相等，手写比较器不会）。
     /// </summary>
     private sealed class FrequentOrderComparer : System.Collections.IComparer, IComparer<LinkItemViewModel>
     {
@@ -638,11 +630,31 @@ public sealed partial class SheetViewModel : ObservableObject
                 return 1;
             }
 
+            // 置顶行在前（true 排前面 = 降序）
+            var byPinned = y.IsPinned.CompareTo(x.IsPinned);
+            if (byPinned != 0)
+            {
+                return byPinned;
+            }
+
+            // 置顶区内部按置顶时间降序（后置顶的在前）；非置顶项这里全是 MinValue，等于没比较
+            var byPinnedAt = PinnedAtOf(y).CompareTo(PinnedAtOf(x));
+            if (byPinnedAt != 0)
+            {
+                return byPinnedAt;
+            }
+
             var byOrder = x.SortOrder.CompareTo(y.SortOrder);
-            return byOrder != 0
-                ? byOrder
-                : string.Compare(x.DisplayName, y.DisplayName, StringComparison.OrdinalIgnoreCase);
+            if (byOrder != 0)
+            {
+                return byOrder;
+            }
+
+            return string.Compare(x.DisplayName, y.DisplayName, StringComparison.OrdinalIgnoreCase);
         }
+
+        /// <summary>老数据里的置顶项可能没有置顶时间（见构造函数里的补齐），这里再兜一次。</summary>
+        private static DateTime PinnedAtOf(LinkItemViewModel item) => item.PinnedAt ?? DateTime.MinValue;
 
         /// <summary>ListCollectionView.CustomSort 走的是非泛型接口。</summary>
         public int Compare(object? x, object? y) => Compare(x as LinkItemViewModel, y as LinkItemViewModel);
