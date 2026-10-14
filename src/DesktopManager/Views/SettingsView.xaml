@@ -30,6 +30,46 @@
                 Margin="0,24,0,8"
                 FontSize="13"
                 Foreground="{DynamicResource Brush.Text.Secondary}"
+                Text="常用" />
+
+            <CheckBox
+                Content="把打开过的记录自动收进「常用」"
+                FontSize="13"
+                Foreground="{DynamicResource Brush.Text.Primary}"
+                IsChecked="{Binding FrequentEnabled, Mode=TwoWay}" />
+
+            <StackPanel
+                Margin="0,10,0,0"
+                Orientation="Horizontal">
+                <TextBlock
+                    VerticalAlignment="Center"
+                    FontSize="13"
+                    Foreground="{DynamicResource Brush.Text.Primary}"
+                    Text="最多保留" />
+                <TextBox
+                    Width="56"
+                    Margin="8,0"
+                    Style="{StaticResource InputBoxStyle}"
+                    TextAlignment="Center"
+                    Text="{Binding FrequentMaxCountText, Mode=TwoWay}" />
+                <TextBlock
+                    VerticalAlignment="Center"
+                    FontSize="13"
+                    Foreground="{DynamicResource Brush.Text.Primary}"
+                    Text="条（1 - 100）" />
+            </StackPanel>
+
+            <TextBlock
+                Margin="0,8,0,0"
+                FontSize="12"
+                Foreground="{DynamicResource Brush.Text.Secondary}"
+                TextTrimming="CharacterEllipsis"
+                Text="条数上限与上面的开关无关：超出上限时排在最后的记录会被删掉，只删记录、不删文件。" />
+
+            <TextBlock
+                Margin="0,24,0,8"
+                FontSize="13"
+                Foreground="{DynamicResource Brush.Text.Secondary}"
                 Text="数据与缓存" />
 
             <StackPanel Orientation="Horizontal">

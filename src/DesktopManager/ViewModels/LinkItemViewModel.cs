@@ -149,6 +149,12 @@ public sealed partial class LinkItemViewModel : ObservableObject
     public bool CanRemove => !_owner.IsDesktop;
 
     /// <summary>
+    /// 内置「常用」Sheet 的行没有“置顶”：那一页的顺序就是「最近打开的在最前」，
+    /// 置顶会把刚打开的记录压下去，所以菜单里不显示这一项（SheetViewModel.TogglePin 里也挡了一道）。
+    /// </summary>
+    public bool CanPin => !_owner.IsFrequent;
+
+    /// <summary>
     /// 右键菜单按类型分叉：文件夹保留“打开”，其余换成“打开所在文件夹”。
     /// 故意不缓存——每次菜单弹出时绑定会重读一次，目标被改名或删除也能立刻反映。
     /// </summary>

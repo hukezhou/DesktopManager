@@ -316,8 +316,10 @@
             <Setter.Value>
                 <ContextMenu>
                     <!-- 绑定源必须是 ContextMenu（PlacementTarget 是它的属性），写成 Self 会解析到 MenuItem 上而失败 -->
+                    <!-- 内置「常用」页没有置顶：那一页的顺序就是「最近打开的在最前」（见 LinkItemViewModel.CanPin） -->
                     <MenuItem
                         Header="{Binding PlacementTarget.DataContext.PinMenuHeader, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                        Visibility="{Binding PlacementTarget.DataContext.CanPin, RelativeSource={RelativeSource AncestorType=ContextMenu}, Converter={StaticResource BoolToVisibility}}"
                         Command="{Binding PlacementTarget.DataContext.PinCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
                     <MenuItem
                         Header="修改"

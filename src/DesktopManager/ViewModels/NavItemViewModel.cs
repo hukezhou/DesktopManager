@@ -41,10 +41,10 @@ public sealed partial class NavItemViewModel : ObservableObject
     /// <summary>
     /// 能否参与长按拖拽手势 —— 既能作为源（拖到回收站移除、原地释放编辑），
     /// 也能作为交换目标（另一个项拖到它上面释放）。
-    /// 内置“桌面”Sheet 与设置页没有可删的记录，删了也没有意义，而且“桌面”启动时永远排第一，
-    /// 交换了也保存不住，所以两个角色都不参与。
+    /// 内置“桌面”与“常用”两个 Sheet 以及设置页都不参与：前两者启动时永远排在第一、第二，
+    /// 交换了也保存不住；“桌面”没有可删的记录，“常用”由程序维护，删掉下次启动又会长回来。
     /// </summary>
-    public bool CanDrag => Content is SheetViewModel { IsDesktop: false };
+    public bool CanDrag => Content is SheetViewModel { IsProtected: false };
 
     [RelayCommand]
     private void Select() => _onSelect(this);

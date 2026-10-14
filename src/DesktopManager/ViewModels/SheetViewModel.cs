@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
@@ -12,7 +13,8 @@ namespace DesktopManager.ViewModels;
 
 /// <summary>
 /// 一个 Sheet 的用户栏：搜索、排序（置顶在前 → 置顶时间降序 → 打开次数降序 → SortOrder）、
-/// 添加/修改/置顶/移除/打开。
+/// 添加/修改/置顶/移除/打开。内置「常用」Sheet 另有一套规则：不按打开次数排名，
+/// 由 <see cref="PromoteOpened"/> 把打开过的记录插到最前，并按条数上限从末尾裁剪。
 /// </summary>
 public sealed partial class SheetViewModel : ObservableObject
 {
@@ -22,6 +24,9 @@ public sealed partial class SheetViewModel : ObservableObject
     private readonly IShellService _shell;
     private readonly IDesktopScanner _scanner;
     private readonly Action _requestSave;
+
+    /// <summary>某一行被成功打开时上报，由 <see cref="MainViewModel"/> 决定是否收进「常用」。</summary>
+    private readonly Action<SheetViewModel, LinkItemViewModel> _onOpened;
 
     /// <summary>桌面条目的“覆盖项”路径集合，避免每次 AttachOverride 都线性查找。</summary>
     private readonly HashSet<string> _overridePaths = new(StringComparer.OrdinalIgnoreCase);
@@ -55,7 +60,8 @@ public sealed partial class SheetViewModel : ObservableObject
         IStore store,
         IShellService shell,
         IDesktopScanner scanner,
-        Action requestSave)
+        Action requestSave,
+        Action<SheetViewModel, LinkItemViewModel> onOpened)
     {
         Model = model;
         _dialogs = dialogs;
@@ -64,19 +70,32 @@ public sealed partial class SheetViewModel : ObservableObject
         _shell = shell;
         _scanner = scanner;
         _requestSave = requestSave;
+        _onOpened = onOpened;
 
-        View = new ListCollectionView(Items)
+        var view = new ListCollectionView(Items)
         {
             Filter = obj => obj is LinkItemViewModel item && MatchesSearch(item),
         };
-        View.SortDescriptions.Add(new SortDescription(nameof(LinkItemViewModel.IsPinned), ListSortDirection.Descending));
-        // 置顶区内部按置顶时间降序（后置顶的排最前）。非置顶项 PinnedAt 都是 null，降序下彼此相等，
-        // 于是自然落到下一条比较规则 —— 置顶项因此不参与“打开次数”的排名。
-        View.SortDescriptions.Add(new SortDescription(nameof(LinkItemViewModel.PinnedAt), ListSortDirection.Descending));
-        // 非置顶区按打开次数降序，打开越多次越靠前；次数相同退回原来的 SortOrder
-        View.SortDescriptions.Add(new SortDescription(nameof(LinkItemViewModel.OpenCount), ListSortDirection.Descending));
-        View.SortDescriptions.Add(new SortDescription(nameof(LinkItemViewModel.SortOrder), ListSortDirection.Ascending));
-        View.SortDescriptions.Add(new SortDescription(nameof(LinkItemViewModel.DisplayName), ListSortDirection.Ascending));
+        if (IsFrequent)
+        {
+            // 「常用」是按「最近打开」维护的，打开次数排名会把刚插到最前的记录挤下去，
+            // 所以这一页只用 SortOrder（越小越靠前）。CustomSort 而不是 SortDescriptions：
+            // 同一个比较器还要给条数上限裁剪取「末尾那条」，两处必须完全同序。
+            view.CustomSort = FrequentOrderComparer.Instance;
+        }
+        else
+        {
+            view.SortDescriptions.Add(new SortDescription(nameof(LinkItemViewModel.IsPinned), ListSortDirection.Descending));
+            // 置顶区内部按置顶时间降序（后置顶的排最前）。非置顶项 PinnedAt 都是 null，降序下彼此相等，
+            // 于是自然落到下一条比较规则 —— 置顶项因此不参与“打开次数”的排名。
+            view.SortDescriptions.Add(new SortDescription(nameof(LinkItemViewModel.PinnedAt), ListSortDirection.Descending));
+            // 非置顶区按打开次数降序，打开越多次越靠前；次数相同退回原来的 SortOrder
+            view.SortDescriptions.Add(new SortDescription(nameof(LinkItemViewModel.OpenCount), ListSortDirection.Descending));
+            view.SortDescriptions.Add(new SortDescription(nameof(LinkItemViewModel.SortOrder), ListSortDirection.Ascending));
+            view.SortDescriptions.Add(new SortDescription(nameof(LinkItemViewModel.DisplayName), ListSortDirection.Ascending));
+        }
+
+        View = view;
 
         // 列表内容变化会影响空状态提示与计数；批量装载期间跳过，装载完再统一通知
         Items.CollectionChanged += (_, _) =>
@@ -91,7 +110,14 @@ public sealed partial class SheetViewModel : ObservableObject
         // 让它们排在有时间的置顶项之后，而不是混在一起随机排
         foreach (var item in Model.Items)
         {
-            if (item.IsPinned && item.PinnedAt is null)
+            if (IsFrequent)
+            {
+                // 「常用」按最近打开排，置顶在这一页没有意义（菜单里也没入口）。老数据里可能留着置顶项：
+                // 它的色带会误导，还会让 NextSortOrder 漏掉它、算出比它大的值，插到最前就失效了
+                item.IsPinned = false;
+                item.PinnedAt = null;
+            }
+            else if (item.IsPinned && item.PinnedAt is null)
             {
                 item.PinnedAt = DateTime.MinValue;
             }
@@ -158,7 +184,19 @@ public sealed partial class SheetViewModel : ObservableObject
 
     public bool IsDesktop => Model.Kind == SheetKind.Desktop;
 
+    /// <summary>内置「常用」：内容由「打开过」这个动作自动维护。</summary>
+    public bool IsFrequent => Model.Kind == SheetKind.Frequent;
+
+    /// <summary>内置 Sheet（桌面 / 常用）：侧边栏里不能改名、换图标、移除、交换。</summary>
+    public bool IsProtected => Model.IsProtected;
+
     public bool CanAddItems => !IsDesktop;
+
+    /// <summary>
+    /// 「常用」的条数上限，由 <see cref="MainViewModel"/> 从设置里同步过来。
+    /// 与 <see cref="FrequentEnabled"/> 无关：即使不动态更新，超出上限的记录照样裁剪。
+    /// </summary>
+    public int FrequentCapacity { get; set; } = AppSettings.DefaultFrequentMax;
 
     public int FilteredCount => View.Cast<object>().Count();
 
@@ -169,7 +207,9 @@ public sealed partial class SheetViewModel : ObservableObject
     public string EmptyHint => Items.Count == 0
         ? IsDesktop
             ? "桌面上没有可显示的文件"
-            : "还没有内容，点击右侧 “+” 添加文件、文件夹或快捷方式"
+            : IsFrequent
+                ? "还没有内容，打开过的文件、文件夹或快捷方式会自动出现在这里"
+                : "还没有内容，点击右侧 “+” 添加文件、文件夹或快捷方式"
         : $"没有匹配 “{SearchText}” 的内容";
 
     /// <summary>
@@ -356,6 +396,9 @@ public sealed partial class SheetViewModel : ObservableObject
         // 桌面条目在 sheets.json 里本来可能没有记录，要存这个数就得先把它转正成覆盖项
         AttachOverride(item.Model);
 
+        // 「打开过」这件事要同步到内置「常用」Sheet，本 Sheet 不认识其它 Sheet，交给 MainViewModel 决定
+        _onOpened(this, item);
+
         // 故意不调 RefreshView()：打开完当场不跳位，
         // 等下次进入该 Sheet、搜索、增删或置顶触发重排时才按新次数排
         _requestSave();
@@ -387,6 +430,12 @@ public sealed partial class SheetViewModel : ObservableObject
 
     public void TogglePin(LinkItemViewModel item)
     {
+        // 「常用」按最近打开排序，置顶会把刚插到最前的记录压下去，所以这一页根本没有置顶入口
+        if (IsFrequent)
+        {
+            return;
+        }
+
         item.IsPinned = !item.IsPinned;
         item.PinnedAt = item.IsPinned ? DateTime.Now : null;
         AttachOverride(item.Model);
@@ -466,17 +515,84 @@ public sealed partial class SheetViewModel : ObservableObject
 
         Model.Items.Add(model);
         Items.Add(GetItem(model));
+        EnforceFrequentCap();
         RefreshView();
         _requestSave();
     }
 
     /// <summary>
     /// 新记录的 SortOrder 取当前最小值减一：在打开次数相同（都是 0）的非置顶行里它排最前。
+    /// 内置「常用」Sheet 也靠它把记录挪到最前（那一页只按 SortOrder 排）。
     /// </summary>
     private int NextSortOrder()
     {
         var unpinned = Items.Where(i => !i.IsPinned).Select(i => i.SortOrder).ToList();
         return unpinned.Count > 0 ? unpinned.Min() - 1 : 0;
+    }
+
+    /// <summary>
+    /// 把一条「刚被打开过」的记录收进内置「常用」Sheet：同路径（忽略大小写）已经有记录就把
+    /// 那一条移到最前，否则复制一条新的插到最前。副本继承来源当时的显示名、打开次数与自定义图标
+    /// 副本；来源之后换图标或改名都不会跟着变。上限裁剪见 <see cref="EnforceFrequentCap"/>。
+    /// </summary>
+    public void PromoteOpened(LinkItem source)
+    {
+        if (!IsFrequent || !_loaded)
+        {
+            return;
+        }
+
+        var existing = Model.Items.FirstOrDefault(
+            item => string.Equals(item.TargetPath, source.TargetPath, StringComparison.OrdinalIgnoreCase));
+
+        if (existing is null)
+        {
+            var copy = new LinkItem
+            {
+                TargetPath = source.TargetPath,
+                DisplayName = source.DisplayName,
+                OpenCount = source.OpenCount,
+                SortOrder = NextSortOrder(),
+            };
+
+            if (!string.IsNullOrWhiteSpace(source.CustomIconPath))
+            {
+                // 图标副本是各条记录独占的（删除时会一并删掉），所以这里复制一份而不是共用路径
+                copy.CustomIconPath = _store.ImportIconFile(source.CustomIconPath!);
+            }
+
+            Model.Items.Add(copy);
+            Items.Add(GetItem(copy));
+        }
+        else
+        {
+            // 已经在「常用」里：只把它挪到最前，不新建重复记录
+            existing.SortOrder = NextSortOrder();
+        }
+
+        EnforceFrequentCap();
+        RefreshView();
+        _requestSave();
+    }
+
+    /// <summary>
+    /// 「常用」条数上限：超出就删掉显示顺序里最后一条，也就是最久没被打开的那条。
+    /// 不能用 <c>Items[Count-1]</c> —— Items 是插入顺序，显示顺序由
+    /// <see cref="FrequentOrderComparer"/> 决定。删除复用 <see cref="RemoveItem"/>，
+    /// 因此只删记录与它独占的图标副本，<b>不碰磁盘上的文件</b>。
+    /// </summary>
+    public void EnforceFrequentCap()
+    {
+        if (!IsFrequent || Items.Count <= FrequentCapacity)
+        {
+            return;
+        }
+
+        var overflow = Items.Count - FrequentCapacity;
+        foreach (var item in Items.OrderBy(i => i, FrequentOrderComparer.Instance).TakeLast(overflow).ToList())
+        {
+            RemoveItem(item);
+        }
     }
 
     private void AttachOverride(LinkItem model)
@@ -494,4 +610,41 @@ public sealed partial class SheetViewModel : ObservableObject
 
     /// <summary>让无障碍/UIA 读到 Sheet 名称。</summary>
     public override string ToString() => Title;
+
+    /// <summary>
+    /// 内置「常用」Sheet 的显示顺序：SortOrder 升序，相同则按名称。
+    /// 这一页没有置顶（见 <see cref="TogglePin"/>），也不按打开次数排名 —— 否则刚插到最前的
+    /// 记录会被打开次数更多的行挤下去。
+    /// 排序视图与条数裁剪共用同一个实例，两处对「最后一条」的理解才不会不一致。
+    /// </summary>
+    private sealed class FrequentOrderComparer : System.Collections.IComparer, IComparer<LinkItemViewModel>
+    {
+        public static readonly FrequentOrderComparer Instance = new();
+
+        public int Compare(LinkItemViewModel? x, LinkItemViewModel? y)
+        {
+            if (ReferenceEquals(x, y))
+            {
+                return 0;
+            }
+
+            if (x is null)
+            {
+                return -1;
+            }
+
+            if (y is null)
+            {
+                return 1;
+            }
+
+            var byOrder = x.SortOrder.CompareTo(y.SortOrder);
+            return byOrder != 0
+                ? byOrder
+                : string.Compare(x.DisplayName, y.DisplayName, StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>ListCollectionView.CustomSort 走的是非泛型接口。</summary>
+        public int Compare(object? x, object? y) => Compare(x as LinkItemViewModel, y as LinkItemViewModel);
+    }
 }

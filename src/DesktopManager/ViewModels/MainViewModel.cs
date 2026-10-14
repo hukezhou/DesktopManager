@@ -17,6 +17,12 @@ public sealed partial class MainViewModel : ObservableObject
     private const string SettingsGlyph = "\uE713";
     private const string DefaultSheetGlyph = "\uE8B7";
 
+    /// <summary>内置「常用」Sheet 的名称；老数据里同名的自定义 Sheet 会被就地转正。</summary>
+    private const string FrequentTitle = "常用";
+
+    /// <summary>新建内置「常用」时用的预设徽章（矢量，不落盘）。</summary>
+    private const string FrequentPresetIcon = "star";
+
     private readonly IStore _store;
     private readonly IDialogService _dialogs;
     private readonly IIconCache _icons;
@@ -49,9 +55,16 @@ public sealed partial class MainViewModel : ObservableObject
         _scanner = scanner;
         _settings = store.LoadSettings();
 
+        // 手改过的 settings.json 可能给出界外的条数：按默认值处理，
+        // 否则一个 0 会让启动时的裁剪把「常用」清空
+        if (_settings.FrequentMaxCount is < AppSettings.MinFrequentMax or > AppSettings.MaxFrequentMax)
+        {
+            _settings.FrequentMaxCount = AppSettings.DefaultFrequentMax;
+        }
+
         IsTopmost = _settings.Topmost;
 
-        Settings = new SettingsViewModel(store, shell, icons, themes, dialogs, _settings, Save);
+        Settings = new SettingsViewModel(store, shell, icons, themes, dialogs, _settings, Save, ApplyFrequentSettings);
         SettingsNav = new NavItemViewModel("设置", Settings, OnNavSelected, SettingsGlyph);
         Sidebar = new SidebarViewModel(AddSheet, EditSheet, RemoveSheet, SwapSheets, SettingsNav);
 
@@ -161,40 +174,102 @@ public sealed partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void CloseWindow() => _window?.CloseWindow();
 
+    /// <summary>
+    /// 装载 Sheet，并保证两个内置项存在且位置固定：「桌面」第一、「常用」第二，
+    /// 自定义项按已有 Order 从 2 起顺延（内置项不参与拖拽交换，位置每次启动都重编）。
+    /// </summary>
     private void LoadSheets()
     {
         var definitions = _store.LoadSheets();
-        var desktop = definitions.FirstOrDefault(d => d.Kind == SheetKind.Desktop);
-        if (desktop is null)
-        {
-            desktop = new SheetDefinition { Title = "桌面", Kind = SheetKind.Desktop, Order = int.MinValue };
-        }
-        else
-        {
-            desktop.Title = "桌面";
-            definitions.Remove(desktop);
-        }
+        var desktop = EnsureDesktop(definitions);
+        var frequent = EnsureFrequent(definitions);
 
-        definitions.Insert(0, desktop);
+        desktop.Order = int.MinValue;
+        frequent.Order = 1;
 
+        CreateSheet(desktop);
+        var frequentSheet = CreateSheet(frequent);
+
+        var order = 2;
         foreach (var definition in definitions.OrderBy(d => d.Order))
         {
+            definition.Order = order++;
             CreateSheet(definition);
         }
+
+        // 上限可能比已有记录数小（例如设置里刚改小），装载完立刻裁一次
+        frequentSheet.EnforceFrequentCap();
 
         var restored = Sheets.FirstOrDefault(s => s.Model.Id == _settings.LastSheetId) ?? Sheets.FirstOrDefault();
         SelectContent(restored);
     }
 
+    /// <summary>内置「桌面」：没有就补一个，名称始终锁定。</summary>
+    private static SheetDefinition EnsureDesktop(List<SheetDefinition> definitions)
+    {
+        var desktop = definitions.FirstOrDefault(d => d.Kind == SheetKind.Desktop);
+        if (desktop is null)
+        {
+            return new SheetDefinition { Title = "桌面", Kind = SheetKind.Desktop, Order = int.MinValue };
+        }
+
+        desktop.Title = "桌面";
+        definitions.Remove(desktop);
+        return desktop;
+    }
+
+    /// <summary>
+    /// 内置「常用」：已经有就直接用；否则把名为「常用」的自定义 Sheet <b>就地转正</b>
+    /// —— 保留它的 Id、图标和全部现有行，用户自己建的这一页不会因为升级而消失；
+    /// 两者都没有才新建一个。返回的项会从 definitions 里摘走，由调用方固定到第二个位置。
+    /// </summary>
+    private static SheetDefinition EnsureFrequent(List<SheetDefinition> definitions)
+    {
+        var frequent = definitions.FirstOrDefault(d => d.Kind == SheetKind.Frequent);
+        if (frequent is null)
+        {
+            frequent = definitions.FirstOrDefault(d =>
+                d.Kind == SheetKind.Custom && string.Equals(d.Title, FrequentTitle, StringComparison.Ordinal));
+
+            if (frequent is not null)
+            {
+                frequent.Kind = SheetKind.Frequent;
+            }
+        }
+        else
+        {
+            frequent.Title = FrequentTitle;
+        }
+
+        if (frequent is null)
+        {
+            return new SheetDefinition
+            {
+                Title = FrequentTitle,
+                Kind = SheetKind.Frequent,
+                PresetIcon = FrequentPresetIcon,
+                Order = 1,
+            };
+        }
+
+        definitions.Remove(frequent);
+        return frequent;
+    }
+
     private SheetViewModel CreateSheet(SheetDefinition definition)
     {
-        var sheet = new SheetViewModel(definition, _dialogs, _icons, _store, _shell, _scanner, Save);
+        var sheet = new SheetViewModel(definition, _dialogs, _icons, _store, _shell, _scanner, Save, OnItemOpened);
+        if (sheet.IsFrequent)
+        {
+            sheet.FrequentCapacity = _settings.FrequentMaxCount;
+        }
+
         Sheets.Add(sheet);
         Sidebar.Items.Add(new NavItemViewModel(
             definition.Title,
             sheet,
             OnNavSelected,
-            glyph: definition.IsBuiltIn ? DesktopGlyph : DefaultSheetGlyph,
+            glyph: definition.IsDesktop ? DesktopGlyph : DefaultSheetGlyph,
             icon: ResolveSheetIcon(definition)));
         return sheet;
     }
@@ -213,6 +288,41 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     private void OnNavSelected(NavItemViewModel item) => SelectContent(item.Content);
+
+    /// <summary>
+    /// 某一行被成功打开：把这条记录收进内置「常用」Sheet 的最前面。
+    /// 右键的「打开所在文件夹」不经过 <see cref="SheetViewModel.OpenItem"/>，所以不会到这里 ——
+    /// 只是看了一眼目录，不算打开。
+    /// </summary>
+    private void OnItemOpened(SheetViewModel source, LinkItemViewModel item)
+    {
+        if (!_settings.FrequentEnabled)
+        {
+            return;
+        }
+
+        var frequent = Sheets.FirstOrDefault(s => s.IsFrequent);
+        if (frequent is not null)
+        {
+            frequent.PromoteOpened(item.Model);
+        }
+    }
+
+    /// <summary>
+    /// 设置页改了「常用」的开关或条数上限：把上限同步给内置 Sheet 并立刻裁一次，
+    /// 这样改小数字的当场就能看到末尾的记录被删掉。
+    /// </summary>
+    private void ApplyFrequentSettings()
+    {
+        foreach (var sheet in Sheets)
+        {
+            if (sheet.IsFrequent)
+            {
+                sheet.FrequentCapacity = _settings.FrequentMaxCount;
+                sheet.EnforceFrequentCap();
+            }
+        }
+    }
 
     private void SelectContent(object? content)
     {
@@ -274,7 +384,7 @@ public sealed partial class MainViewModel : ObservableObject
     /// </summary>
     private void EditSheet(NavItemViewModel nav)
     {
-        if (nav.Content is not SheetViewModel sheet || sheet.IsDesktop)
+        if (nav.Content is not SheetViewModel sheet || sheet.IsProtected)
         {
             return;
         }
@@ -316,15 +426,16 @@ public sealed partial class MainViewModel : ObservableObject
     /// 两个集合都要换：Sheets 决定 sheets.json 里的先后，Sidebar.Items 决定界面上的先后。
     /// 用索引器对调而不是 Move —— Move 是“插到那个位置”，会把中间几项一起顺移，
     /// 而这里要的是两项互换。
-    /// Order 一律重编 1..n —— AddSheet 用 Sheets.Count 当 Order，删过 Sheet 之后会出现重复值，
-    /// 只交换两个值在重复值上等于没交换。内置“桌面”保持 int.MinValue（它永远排第一，不参与交换）。
+    /// Order 一律重编 —— AddSheet 用 Sheets.Count 当 Order，删过 Sheet 之后会出现重复值，
+    /// 只交换两个值在重复值上等于没交换。两个内置项位置固定：「桌面」永远 int.MinValue（第一）、
+    /// 「常用」永远 1（第二），它们都不参与交换。
     /// </summary>
     private void SwapSheets(NavItemViewModel source, NavItemViewModel target)
     {
         // 视图层已经过滤过一轮，这里再兜一层：两者必须是不同的、非内置的自定义 Sheet
         if (ReferenceEquals(source, target)
-            || source.Content is not SheetViewModel first || first.IsDesktop
-            || target.Content is not SheetViewModel second || second.IsDesktop)
+            || source.Content is not SheetViewModel first || first.IsProtected
+            || target.Content is not SheetViewModel second || second.IsProtected)
         {
             return;
         }
@@ -349,10 +460,21 @@ public sealed partial class MainViewModel : ObservableObject
         Sidebar.Items[navFrom] = target;
         Sidebar.Items[navTo] = source;
 
-        var order = 1;
+        var order = 2;
         foreach (var sheet in Sheets)
         {
-            sheet.Model.Order = sheet.IsDesktop ? int.MinValue : order++;
+            if (sheet.IsDesktop)
+            {
+                sheet.Model.Order = int.MinValue;
+            }
+            else if (sheet.IsFrequent)
+            {
+                sheet.Model.Order = 1;
+            }
+            else
+            {
+                sheet.Model.Order = order++;
+            }
         }
 
         Save();
@@ -364,7 +486,7 @@ public sealed partial class MainViewModel : ObservableObject
     /// </summary>
     private void RemoveSheet(NavItemViewModel nav)
     {
-        if (nav.Content is not SheetViewModel sheet || sheet.IsDesktop)
+        if (nav.Content is not SheetViewModel sheet || sheet.IsProtected)
         {
             return;
         }

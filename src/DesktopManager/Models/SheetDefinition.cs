@@ -26,9 +26,17 @@ public class SheetDefinition
     /// <summary>
     /// 自定义 Sheet：全部条目。
     /// 桌面 Sheet：仅存放对桌面文件的覆盖项（置顶/改名/图标/打开次数）。
+    /// 常用 Sheet：全部条目，由「打开过」这个动作自动维护（见 <c>SheetViewModel.PromoteOpened</c>）。
     /// </summary>
     public List<LinkItem> Items { get; set; } = new();
 
+    /// <summary>内置「桌面」：行来自磁盘扫描，本身没有可删的记录。</summary>
     [System.Text.Json.Serialization.JsonIgnore]
-    public bool IsBuiltIn => Kind == SheetKind.Desktop;
+    public bool IsDesktop => Kind == SheetKind.Desktop;
+
+    /// <summary>
+    /// 内置 Sheet（桌面与常用）：启动时保证存在，不能改名、换图标、移除，也不参与拖拽交换。
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool IsProtected => Kind is SheetKind.Desktop or SheetKind.Frequent;
 }
