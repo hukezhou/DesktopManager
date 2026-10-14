@@ -86,10 +86,46 @@ public sealed class ShellService : IShellService
         {
             linkObject = new ShellLink();
             var link = (IShellLinkW)linkObject;
-            link.Resolve(IntPtr.Zero, 0x00 | 0x01 | 0x04); // SLGP_FLAGS: no UI, resolve known folders, update
+
+            // 必须先加载 .lnk 文件本身：new ShellLink() 得到的是一个空白 link，
+            // 少了这一步 GetPath 永远返回空字符串（快捷方式解析不出目标就是这个原因）。
+            ((IPersistFile)linkObject).Load(path, 0);
+
+            // Resolve 只是“尽力修复失效目标”，对失效或只读的 .lnk 会抛异常；
+            // 目标路径本来就在 link 里，所以它失败不该影响接着往下读。
+            try
+            {
+                link.Resolve(IntPtr.Zero, 0x0001 | 0x0004); // SLR_NO_UI | SLR_UPDATE
+            }
+            catch (COMException)
+            {
+            }
+
             var buffer = new System.Text.StringBuilder(MAX_PATH);
             link.GetPath(buffer, buffer.Capacity, IntPtr.Zero, 0);
             var target = buffer.ToString();
+
+            // 目标是外壳对象（例如“此电脑”）时 GetPath 为空，只能从 IDList 试一次
+            if (string.IsNullOrWhiteSpace(target))
+            {
+                link.GetIDList(out IntPtr pidl);
+                if (pidl != IntPtr.Zero)
+                {
+                    try
+                    {
+                        var fromIdList = new System.Text.StringBuilder(MAX_PATH);
+                        if (SHGetPathFromIDList(pidl, fromIdList))
+                        {
+                            target = fromIdList.ToString();
+                        }
+                    }
+                    finally
+                    {
+                        Marshal.FreeCoTaskMem(pidl);
+                    }
+                }
+            }
+
             return string.IsNullOrWhiteSpace(target) ? path : target;
         }
         catch (COMException)
@@ -165,10 +201,26 @@ public sealed class ShellService : IShellService
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool DestroyIcon(IntPtr hIcon);
 
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    private static extern bool SHGetPathFromIDList(IntPtr pidl, System.Text.StringBuilder pszPath);
+
     [ComImport]
     [Guid("00021401-0000-0000-C000-000000000046")]
     private class ShellLink
     {
+    }
+
+    /// <summary>ShellLink 对象实现的持久化接口——不 Load 就读不到 .lnk 里的目标。</summary>
+    [ComImport]
+    [Guid("0000010C-0000-0000-C000-000000000046")]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IPersistFile
+    {
+        void GetClassID(out Guid pClassID);
+        void IsDirty();
+        void Load([MarshalAs(UnmanagedType.LPWStr)] string pszFileName, uint dwMode);
+        void Save([MarshalAs(UnmanagedType.LPWStr)] string pszFileName, [MarshalAs(UnmanagedType.Bool)] bool fRemember);
+        void GetCurFile([MarshalAs(UnmanagedType.LPWStr)] out string ppszFileName);
     }
 
     [ComImport]
