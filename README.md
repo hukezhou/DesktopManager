@@ -40,7 +40,7 @@ dotnet run --project src/DesktopManager
 - **窗口边框**：`WindowStyle=None`，外框由 `MainWindow` 根部的 `Border` 自绘，宽度 4 DIP（`AppLayout.WindowBorderThickness`，在 `ApplyLayoutConstants()` 里赋值——`BorderThickness` 是 `Thickness` 类型，XAML 里 `x:Static` 一个 `double` 常量会抛 `ArgumentException`）。颜色 `Brush.Window.Border` 与标题栏 / 侧边栏同色（`Color.Panel.Background`），所以只在贴着内容区那一侧看得出。`Border` 会把子元素排在边框厚度以内，用户栏的行底色与分隔线贴到边框内侧，不会盖住右下角。`ResizeBorderThickness="6,6,2,6"`：只有右侧的拖拽改大小边界收窄到 2 DIP（其余三边 6 DIP），这 2 DIP 完全落在 4 DIP 的边框带内，所以拖右边缘改大小仍然有效，同时给贴边的滚动条让出了客户区。外框四角 7 DIP 圆角（`AppLayout.WindowCornerRadius`；赋给 `RootBorder.CornerRadius` 的是 `AppLayout.WindowBorderCornerRadius` = 7 − 4/2 = 5 DIP，因为 WPF 把边框带画在圆角外侧，实测外弧半径 = `CornerRadius + 边框厚度 / 2`，不减就得到 9 DIP。赋值在 `ApplyWindowCornerRadius()` 里——`CornerRadius` 与 `BorderThickness` 一样是结构体，XAML 里 `x:Static` 一个 double 常量同样不行），窗口因此设 `AllowsTransparency="True"` + `Background="Transparent"`，四角真正透明、桌面透出来（代价：WPF 在这种 layered 窗口里用灰度抗锯齿而非 ClearType，192 DPI 下仍干净）。最大化时内外圆角都归零（`OnStateChanged` 调用同一个方法），与 Windows 11 一致。
 - **单实例**：再次启动不会开新窗口，而是把已有窗口唤到前台（最小化时先还原），第二个实例自行退出（退出码 0）。用命名 Mutex 判定，进程崩溃或被强杀时由系统释放，不会留下“再也打不开”的死锁；拦截发生在建窗口与读配置之前，所以被拒的实例不会写任何文件。管理员权限与普通权限各算一个实例（Windows 完整性级别限制）。
 - **搜索栏**：过滤当前 Sheet 的行，只显示命中的行。右侧圆形 “+” 添加一行（选择文件 / 文件夹 / 快捷方式，名称默认取目标本来的名称），新行排在所有置顶行之后、打开次数相同（都是 0 次）的非置顶行最前面。内置“桌面”Sheet 为只读扫描，该按钮禁用。
-- **用户栏**：每行显示目标原始图标 + 名称。单击打开（文件夹 / 应用 / 文档）。右键菜单：置顶 / 取消置顶、修改（改图标与名称）、打开、从列表移除——最后这项**只有自定义 Sheet 有**：桌面 Sheet 的行来自磁盘扫描、没有可删的记录，要去掉它只能删磁盘文件，而本工具从不删磁盘文件，所以菜单里直接不显示（绑 `LinkItemViewModel.CanRemove`）。菜单为自定义模板：菜单项通栏（不用 WPF 默认模板那条 `#F1F1F1` 图标列），hover 时微信绿底（`Brush.Accent`）白字；“从列表移除”用危险色 `Brush.Menu.Danger`（`#FA5152`），hover 时红底白字。
+- **用户栏**：每行显示目标原始图标 + 名称。单击打开（文件夹 / 应用 / 文档）。右键菜单：置顶 / 取消置顶、修改（改图标与名称）、**打开**（目标是文件夹）或 **打开所在文件夹**（目标是文件 / 快捷方式）——这两项绑同一个 `LinkItemViewModel.IsDirectory`、用相反的两个转换器，永远只显示一个；最后还有从列表移除——它**只有自定义 Sheet 有**：桌面 Sheet 的行来自磁盘扫描、没有可删的记录，要去掉它只能删磁盘文件，而本工具从不删磁盘文件，所以菜单里直接不显示（绑 `LinkItemViewModel.CanRemove`）。「打开所在文件夹」的规则：`.lnk` 先 `ResolveTarget` 解析成真实目标（解析失败原路返回 `.lnk`，于是自然回落到快捷方式的所在目录），目标是目录就打开它本身，否则打开它的父目录；`IsDirectory` 故意不缓存，每次菜单弹出重读一次，目标被改名或删除也能立刻反映。菜单为自定义模板：菜单项通栏（不用 WPF 默认模板那条 `#F1F1F1` 图标列），hover 时微信绿底（`Brush.Accent`）白字；“从列表移除”用危险色 `Brush.Menu.Danger`（`#FA5152`），hover 时红底白字。
 
 - **置顶色带**：置顶行底色比正常行深一档，与微信列表一致（浅色 `Brush.Row.Pinned` `#E6E6E8` / `Brush.Row.Normal` `#EEEEF0`；深色 `#262626` / `#2E2E2E`）。置顶行排序在最前，所以底色自动连成一条色带。搜索栏那条色带跟随用户栏第一行（`SheetViewModel.IsTopRowPinned`），置顶时深色带从内容区顶部开始，不会在搜索栏下方被截断；内容区底色与正常行同值，最后一行以下没有接缝。行分隔线用 `Brush.Row.Separator`（微信实测是比色带更深的灰线，浅色 `#DDDDDF` / 深色 `#1F1F1F`）。
 
@@ -75,7 +75,7 @@ src/DesktopManager/
 ├─ Services/        接口 + 实现，构造注入
 │   ├─ IStore / JsonStore        %APPDATA%\DesktopManager\{sheets,settings}.json + icons\
 │   ├─ PresetIcons               12 个预设徽章：矢量 DrawingImage + key 查表（不落盘）
-│   ├─ IShellService             SHGetFileInfo 取图标、IShellLinkW 解析 .lnk、ShellExecute 打开
+│   ├─ IShellService             SHGetFileInfo 取图标、IShellLinkW 解析 .lnk（改名取默认名与“打开所在文件夹”都先解析；必须先 IPersistFile::Load，否则 GetPath 永远为空；GetPath 空时再试 GetIDList + SHGetPathFromIDList）、ShellExecute 打开文件与目录
 │   ├─ IIconCache                按 path + 修改时间缓存图标
 │   ├─ IDesktopScanner           合并 当前用户桌面 + 公共桌面
 │   ├─ IDialogService            文件/文件夹选择与各对话框（带门闩：同一类对话框不会叠两层，对话框内仍可选文件）
@@ -115,7 +115,7 @@ src/DesktopManager/
 - 桌面 Sheet 每次切换会重扫目录，但条目模型与行对象按路径缓存复用；桌面内容没变时完全不动列表（实测 Reload 成本 ~90ms → ~4ms）
 - 只有设置变化（主题 / 置顶 / 窗口几何 / 上次 Sheet）时只写 `settings.json`，不重写 `sheets.json`；数值没变则完全不写盘
 - 排序（`SheetViewModel` 的 `SortDescriptions`，五条链）：置顶行在前 → **置顶时间降序**（后置顶的排最前）→ **打开次数降序**（打开越多次越靠前）→ `SortOrder` 升序 → 名称升序。置顶项 `PinnedAt` 全非 null、非置顶全为 null，降序下 null 彼此相等，所以非置顶区直接落到“打开次数”这一条——**置顶项不参与次数排名**。新行的 `SortOrder` 取当前最小值减一，在次数相同（都是 0）的非置顶行里排最前
-- 打开次数：每次**成功**打开 +1（`_shell.Open` 返回 false 即目标丢失 / 没有关联程序时不计数、不写盘），存在记录的 `OpenCount` 字段里，标了 `JsonIgnoreCondition.WhenWritingDefault`，0 不落盘。桌面条目在 `sheets.json` 里本来可能没有记录，第一次打开会新建一条只含路径与次数的覆盖项。打开**当场故意不重排**（免得点一下就跳位），切回该 Sheet 时由 `MainViewModel.SelectContent` → `SheetViewModel.RefreshOrder` 生效
+- 打开次数：每次**成功**打开 +1（`_shell.Open` 返回 false 即目标丢失 / 没有关联程序时不计数、不写盘），存在记录的 `OpenCount` 字段里，标了 `JsonIgnoreCondition.WhenWritingDefault`，0 不落盘。桌面条目在 `sheets.json` 里本来可能没有记录，第一次打开会新建一条只含路径与次数的覆盖项。打开**当场故意不重排**（免得点一下就跳位），切回该 Sheet 时由 `MainViewModel.SelectContent` → `SheetViewModel.RefreshOrder` 生效。右键的「打开所在文件夹」**不计数也不写盘**（`SheetViewModel.RevealFolder`）——它只是打开一个目录，没有打开这条记录，不该影响按次数的排名
 - 内置“桌面”Sheet 的置顶 / 改名 / 自定义图标 / 打开次数 作为“覆盖项”按路径保存，不会改动磁盘上的桌面文件。桌面 Sheet 没有“从列表移除”，也没有隐藏机制（旧的 `Hidden` 字段与相关代码已全部删除，`sheets.json` 里残留的 `Hidden` 键会被读取时忽略、下次写盘自动消失）
 - 覆盖项回收：桌面文件被删除或在资源管理器里改名后，它的覆盖项再也用不到，`PruneMissing` 会在下一次扫描桌面时把它从 `sheets.json` 删掉（连同置顶、改名、自定义图标、打开次数）。构造期间不回收也不写盘——那时本 Sheet 还没进 `MainViewModel.Sheets`，写一次就把它整个漏掉
 - 窗口状态（`WindowWidth/Height/Left/Top`、`WindowMaximized`）也存 `settings.json`：拖动 / 改变大小后 500ms 防抖写入，关闭前再补写一次；最大化时只更新标志，不会把全屏尺寸污染成正常尺寸。恢复时先抬到上下限、再压到所在显示器工作区，位置落在已断开的显示器上则保留尺寸并居中
@@ -130,6 +130,7 @@ src/DesktopManager/
 - 侧边栏排序只有“交换”一种手势：拖到另一个项上释放是**两项互换**，不能插入到两个项之间（那需要插入指示线，语义也不同）。内置“桌面”与“设置”既不能被拖也不能被换——“桌面”启动时永远排第一，换了也保存不住
 - 侧边栏的 Sheet 列表没有滚动条：Sheet 多到超出窗口高度时会溢出看不全（交换与移除都只能操作看得见的项）
 - 自定义 Sheet 的记录不会自动清理：目标被删掉或移走后该行仍然显示，点它会弹“打开失败”（不计入打开次数），需要自己“从列表移除”
+- 「打开所在文件夹」对**外壳对象**类快捷方式（“此电脑”“网络”“控制面板”这类）只能落到 `.lnk` 自己所在的目录：它们的目标没有文件系统路径（`GetPath` 为空、`SHGetPathFromIDList` 也拿不到），没有更合适的可打开位置
 - “从列表移除”只删记录（以及它独占的图标副本），**从不删磁盘上的文件或文件夹**
 - 预设图标固定 12 款、写死在 `PresetIcons.cs`，不能在界面上新增；徽章是彩色的，**不跟随主题色**（与自选文件图标行为一致，深浅主题下都清楚），只有内置字形会跟着 `Brush.Sidebar.Glyph` 换色
 - 预设图标只作用于侧边栏项；行图标（每行文件）仍然只能用目标原始图标或自选 .ico/.png

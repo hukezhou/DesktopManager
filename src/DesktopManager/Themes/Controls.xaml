@@ -323,9 +323,16 @@
                         Header="修改"
                         Command="{Binding PlacementTarget.DataContext.EditCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
                     <Separator />
+                    <!-- 按目标类型分叉：文件夹给“打开”，其余给“打开所在文件夹”。
+                         两个 Visibility 绑同一个 IsDirectory、用相反的两个转换器，永远只显示一个 -->
                     <MenuItem
                         Header="打开"
+                        Visibility="{Binding PlacementTarget.DataContext.IsDirectory, RelativeSource={RelativeSource AncestorType=ContextMenu}, Converter={StaticResource BoolToVisibility}}"
                         Command="{Binding PlacementTarget.DataContext.OpenCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                    <MenuItem
+                        Header="打开所在文件夹"
+                        Visibility="{Binding PlacementTarget.DataContext.IsDirectory, RelativeSource={RelativeSource AncestorType=ContextMenu}, Converter={StaticResource InverseBoolToVisibility}}"
+                        Command="{Binding PlacementTarget.DataContext.RevealFolderCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
                     <MenuItem
                         Header="从列表移除"
                         Style="{DynamicResource DangerMenuItemStyle}"

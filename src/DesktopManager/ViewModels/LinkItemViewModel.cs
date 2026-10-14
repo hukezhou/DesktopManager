@@ -1,3 +1,4 @@
+using System.IO;
 using System.Windows.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -147,6 +148,12 @@ public sealed partial class LinkItemViewModel : ObservableObject
     /// </summary>
     public bool CanRemove => !_owner.IsDesktop;
 
+    /// <summary>
+    /// 右键菜单按类型分叉：文件夹保留“打开”，其余换成“打开所在文件夹”。
+    /// 故意不缓存——每次菜单弹出时绑定会重读一次，目标被改名或删除也能立刻反映。
+    /// </summary>
+    public bool IsDirectory => Directory.Exists(TargetPath);
+
     /// <summary>行图标：自定义图标优先，其次是目标本来的图标。</summary>
     public ImageSource? Icon
     {
@@ -184,6 +191,9 @@ public sealed partial class LinkItemViewModel : ObservableObject
 
     [RelayCommand]
     private void Open() => _owner.OpenItem(this);
+
+    [RelayCommand]
+    private void RevealFolder() => _owner.RevealFolder(this);
 
     [RelayCommand]
     private void Pin() => _owner.TogglePin(this);

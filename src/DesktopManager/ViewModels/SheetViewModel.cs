@@ -361,6 +361,30 @@ public sealed partial class SheetViewModel : ObservableObject
         _requestSave();
     }
 
+    /// <summary>
+    /// 打开该记录所在的文件夹。.lnk 先解析成真实目标再取其父目录；解析失败时
+    /// <see cref="IShellService.ResolveTarget"/> 原路返回 .lnk 自身，于是自然回落到快捷方式的所在目录。
+    /// 与 <see cref="OpenItem"/> 不同：这里不计数、不写盘——“看了一眼目录”不该影响按打开次数的排序。
+    /// </summary>
+    public void RevealFolder(LinkItemViewModel item)
+    {
+        var target = _shell.ResolveTarget(item.TargetPath);
+
+        // 快捷方式指向的是一个目录时直接打开那个目录，打开它的父目录反而不是用户要的
+        var folder = Directory.Exists(target) ? target : Path.GetDirectoryName(target);
+
+        if (string.IsNullOrEmpty(folder))
+        {
+            _dialogs.ShowError("打开所在文件夹失败", item.TargetPath);
+            return;
+        }
+
+        if (!_shell.Open(folder, out var error))
+        {
+            _dialogs.ShowError("打开所在文件夹失败", error ?? folder);
+        }
+    }
+
     public void TogglePin(LinkItemViewModel item)
     {
         item.IsPinned = !item.IsPinned;
